@@ -7,7 +7,8 @@
 #include "Ifx_Types.h"
 #include "IfxCpu.h"
 #include "IfxMultican_Can.h"
-//#include "Can_Message.h"
+#include "Can_Message.h"
+#include "Motor.h"
 
 /***********************************************************************/
 /*Define*/ 
@@ -25,17 +26,31 @@ typedef struct
     IfxMultican_Can_MsgObj canMsgRxObj;
 } Can_Info;
 
+typedef struct{
+    VehicleControl vehicle_control;
+    volatile uint8 vehicle_control_flag;
+}Vehicle_Control_Info;
+
+//typedef struct{
+//    uint32 dataLow;
+//    uint32 dataHigh;
+//}Send_Info;
+
 
 /***********************************************************************/
 /*External Variable*/ 
 /***********************************************************************/
 extern Can_Info g_CanInfo;
-extern volatile uint8 canInterruptFlag;
+extern Vehicle_Control_Info g_VehicleControlInfo;
+//extern Send_Info g_sendInfo;
+//extern volatile uint8 canInterruptFlag;
 /***********************************************************************/
 /*Global Function Prototype*/ 
 /***********************************************************************/
 void init_db(void);
 void init_can(void);
+
+void transmit_message(void* msgptr, uint32 messageID);
 void can_TxTest(void);
 
 #endif /* DRIVER_STM */

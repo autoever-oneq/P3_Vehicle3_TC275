@@ -24,13 +24,14 @@
  * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
  * IN THE SOFTWARE.
  *********************************************************************************************************************/
+
+#include "App_Scheduling.h"
 #include "Ifx_Types.h"
 #include "IfxCpu.h"
 #include "IfxScuWdt.h"
 #include "IfxMultican_Can.h"
 #include "IfxPort.h"
 #include "Driver_Stm.h"
-#include "App_Scheduling.h"
 #include "Can.h"
 
 IfxCpu_syncEvent g_cpuSyncEvent = 0;
@@ -50,19 +51,30 @@ void core0_main (void)
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
 
     Driver_Stm_Init();
+    init_db();
     init_can();
 
     volatile int cnt = 0;
+//    volatile uint32 low;
+//    volatile uint32 high;
+    volatile int steering_delta;
+    volatile int motor1_delta;
+    volatile int motor2_delta;
 
     while (1)
     {
 
-//        if(canInterruptFlag){
-//            cnt ++;
-//            canInterruptFlag = 0;
-//        }
+        if(g_VehicleControlInfo.vehicle_control_flag){
+            cnt ++;
+//            low = g_sendInfo.dataLow;
+//            high = g_sendInfo.dataHigh;
+            steering_delta = g_VehicleControlInfo.vehicle_control.MSG.steering_angle_delta;
+            motor1_delta = g_VehicleControlInfo.vehicle_control.MSG.motor1_rpm_delta;
+            motor2_delta = g_VehicleControlInfo.vehicle_control.MSG.motor2_rpm_delta;
+            g_VehicleControlInfo.vehicle_control_flag = 0;
+        }
 
-        AppScheduling();
+//        AppScheduling();
     }
 }
 
