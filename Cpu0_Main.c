@@ -51,12 +51,10 @@ void core0_main (void)
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
 
     Driver_Stm_Init();
-    init_db();
+    init_message();
     init_can();
 
     volatile int cnt = 0;
-//    volatile uint32 low;
-//    volatile uint32 high;
     volatile int steering_delta;
     volatile int motor1_delta;
     volatile int motor2_delta;
@@ -64,17 +62,15 @@ void core0_main (void)
     while (1)
     {
 
-        if(g_VehicleControlInfo.vehicle_control_flag){
+        if(g_MessageInfo.vehicle_control_flag){
             cnt ++;
-//            low = g_sendInfo.dataLow;
-//            high = g_sendInfo.dataHigh;
-            steering_delta = g_VehicleControlInfo.vehicle_control.MSG.steering_angle_delta;
-            motor1_delta = g_VehicleControlInfo.vehicle_control.MSG.motor1_rpm_delta;
-            motor2_delta = g_VehicleControlInfo.vehicle_control.MSG.motor2_rpm_delta;
-            g_VehicleControlInfo.vehicle_control_flag = 0;
+            steering_delta = g_MessageInfo.vehicle_control.MSG.steering_angle_delta;
+            motor1_delta = g_MessageInfo.vehicle_control.MSG.motor1_rpm_delta;
+            motor2_delta = g_MessageInfo.vehicle_control.MSG.motor2_rpm_delta;
+            g_MessageInfo.vehicle_control_flag = 0;
         }
 
-//        AppScheduling();
+        AppScheduling();
     }
 }
 

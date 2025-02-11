@@ -19,9 +19,7 @@
 /*Variable*/
 /***********************************************************************/
 Can_Info g_CanInfo; /**< \brief Demo information */
-Vehicle_Control_Info g_VehicleControlInfo;
-//Send_Info g_sendInfo;
-//volatile uint8 canInterruptFlag = 0;
+Message_Info g_MessageInfo;
 /***********************************************************************/
 /*Function*/
 /***********************************************************************/
@@ -47,8 +45,8 @@ void CAN_RxInt0Handler (void)
         switch(readmsg.id){
             case VEHICLE_CONTROL_ID:
             {
-                g_VehicleControlInfo.vehicle_control.LL = ((sint64)readmsg.data[1] << 32) | (sint64)readmsg.data[0];
-                g_VehicleControlInfo.vehicle_control_flag = 1;
+                g_MessageInfo.vehicle_control.LL = ((sint64)readmsg.data[1] << 32) | (sint64)readmsg.data[0];
+                g_MessageInfo.vehicle_control_flag = 1;
 //                g_sendInfo.dataLow = readmsg.data[0];
 //                g_sendInfo.dataHigh = readmsg.data[1];
 //                canInterruptFlag = 1;
@@ -61,8 +59,9 @@ void CAN_RxInt0Handler (void)
 
 }
 
-void init_db(void){
-    g_VehicleControlInfo.vehicle_control.LL = 0;
+void init_message(void){
+//    g_MessageInfo.vehicle_control.LL = 0;
+    memset(&g_MessageInfo, 0, sizeof(g_MessageInfo));
 }
 
 void init_can (void)
@@ -117,7 +116,8 @@ void init_can (void)
 
 }
 
-void transmit_message (void *msgptr, uint32 messageID)
+// 메세지만 전달
+void transmit_message (Message_Info *msgptr, uint32 messageID)
 {
     IfxMultican_Message msg;
 
@@ -127,24 +127,14 @@ void transmit_message (void *msgptr, uint32 messageID)
      * */
 
     uint32 send_data[2] = {0};
-    Motor_Speed_Info motor_speed_info = {50.1234, 51.4321 };
-
 
     switch (messageID)
     {
         case VEHICLE_STATUS_ID :
         {
 
-//            VehicleStatusMsg* vehicle_status_ptr = (VehicleStatusMsg*)msgptr;
-            VehicleStatus* vehicle_status_ptr = (VehicleStatus*)msgptr;
-            unsigned int motor1_val = (unsigned int)(motor_speed_info.motor1_speed_rpm * 100); // 5012
-            unsigned int motor2_val = (unsigned int)(motor_speed_info.motor2_speed_rpm * 100); // 5143
-
-            vehicle_status_ptr->MSG.motor1_cur_rpm = motor1_val;
-            vehicle_status_ptr->MSG.motor2_cur_rpm = motor2_val;
-
-            send_data[0] = (vehicle_status_ptr->LL) & 0xFFFFFFFF ;
-            send_data[1] = (vehicle_status_ptr->LL >> 32) & 0xFFFFFFFF;
+            send_data[0] = (msgptr->vehicle_status.LL) & 0xFFFFFFFF ;
+            send_data[1] = (msgptr->vehicle_status.LL >> 32) & 0xFFFFFFFF;
 
             IfxMultican_Message_init(&msg, VEHICLE_STATUS_ID, send_data[0], send_data[1], IfxMultican_DataLengthCode_8);
             break;
@@ -161,32 +151,32 @@ void transmit_message (void *msgptr, uint32 messageID)
 
 void can_TxTest (void)
 {
-    uint32 send_data[2] = {0};
-    Motor_Speed_Info motor_speed_info = {50.1234, 51.4321 };
-
-    unsigned int motor1_val = (unsigned int)(motor_speed_info.motor1_speed_rpm * 100); // 5012 0x1394
-    unsigned int motor2_val = (unsigned int)(motor_speed_info.motor2_speed_rpm * 100); // 5143 0x1417
-
-    /* Transmit Data */
-    {
-        IfxMultican_Message msg;
-
-        VehicleStatus vs = {0};
-        vs.MSG.motor1_cur_rpm = motor1_val; // [15:0]
-        vs.MSG.motor2_cur_rpm = motor2_val; // [31:16]
-
-        // vs.LL = (motor2_val << 16) | motor1_val
-        // 0x14171394
-
-        send_data[0] = (vs.LL) & 0xFFFFFFFF ;
-        send_data[1] = (vs.LL >> 32) & 0xFFFFFFFF;
-
-        IfxMultican_Message_init(&msg, VEHICLE_STATUS_ID, send_data[0], send_data[1], IfxMultican_DataLengthCode_8);
-
-        while (IfxMultican_Can_MsgObj_sendMessage(&g_CanInfo.canMsgTxObj, &msg) == IfxMultican_Status_notSentBusy)
-        {
-        }
-    }
+//    uint32 send_data[2] = {0};
+//    Motor_Rpm_Info motor_speed_info = {50.1234, 51.4321 };
+//
+//    unsigned int motor1_val = (unsigned int)(motor_speed_info.motor1_cur_rpm * 100); // 5012 0x1394
+//    unsigned int motor2_val = (unsigned int)(motor_speed_info.motor2_cur_rpm * 100); // 5143 0x1417
+//
+//    /* Transmit Data */
+//    {
+//        IfxMultican_Message msg;
+//
+//        VehicleStatus vs = {0};
+//        vs.MSG.motor1_cur_rpm = motor1_val; // [15:0]
+//        vs.MSG.motor2_cur_rpm = motor2_val; // [31:16]
+//
+//        // vs.LL = (motor2_val << 16) | motor1_val
+//        // 0x14171394
+//
+//        send_data[0] = (vs.LL) & 0xFFFFFFFF ;
+//        send_data[1] = (vs.LL >> 32) & 0xFFFFFFFF;
+//
+//        IfxMultican_Message_init(&msg, VEHICLE_STATUS_ID, send_data[0], send_data[1], IfxMultican_DataLengthCode_8);
+//
+//        while (IfxMultican_Can_MsgObj_sendMessage(&g_CanInfo.canMsgTxObj, &msg) == IfxMultican_Status_notSentBusy)
+//        {
+//        }
+//    }
 }
 
 //void can_TxTest (void)
