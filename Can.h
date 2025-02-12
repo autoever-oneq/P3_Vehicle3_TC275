@@ -1,5 +1,5 @@
-#ifndef DRIVER_CAN
-#define DRIVER_CAN
+#ifndef CAN_H_
+#define CAN_H_
 
 /***********************************************************************/
 /*Include*/ 
@@ -34,7 +34,6 @@ typedef struct{
 /***********************************************************************/
 /*External Variable*/ 
 /***********************************************************************/
-extern Can_Info g_CanInfo;
 extern Message_Info g_MessageInfo;
 /***********************************************************************/
 /*Global Function Prototype*/ 
