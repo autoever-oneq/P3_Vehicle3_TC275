@@ -37,9 +37,9 @@ TestCnt stTestCnt;
 /***********************************************************************/
 
 static void update_motor_rpm(Message_Info* msgptr, Motor_Rpm_Info* motor_rpm_info){
-    msgptr->vehicle_status.MSG.motor1_cur_rpm = (unsigned int)(motor_rpm_info->motor1_cur_rpm * 100);
-    msgptr->vehicle_status.MSG.motor2_cur_rpm = (unsigned int)(motor_rpm_info->motor2_cur_rpm * 100);
+    msgptr->vehicle_status.MSG.motor_cur_rpm = motor_rpm_info->motor_cur_rpm;
 }
+
 static void AppTask1ms(void)
 {
     stTestCnt.u32nuCnt1ms++;
@@ -50,11 +50,13 @@ static void AppTask10ms(void)
 
     stTestCnt.u32nuCnt10ms++;
 
-    // 1. 모터값 가져옴
+//    // 1. 모터값 가져옴
      update_motor_rpm(&g_MessageInfo, &g_MotorRpmInfo);
-
-    // 2. 메세지 전달
+//
+//    // 2. 메세지 전달
     transmit_message(&g_MessageInfo, VEHICLE_STATUS_ID);
+
+
 }
 
 static void AppTask100ms(void)

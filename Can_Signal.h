@@ -44,16 +44,20 @@
 /*-------------------------------------------------Data Structures---------------------------------------------------*/
 /*********************************************************************************************************************/
  
+//typedef struct
+//{
+//    unsigned int motor1_cur_rpm : 16; // 51200
+//    unsigned int motor2_cur_rpm : 16;
+//} VehicleStatusMsg;
+
 typedef struct
 {
-    unsigned int motor1_cur_rpm : 16; // 51200
-    unsigned int motor2_cur_rpm : 16;
+    float32 motor_cur_rpm;
 } VehicleStatusMsg;
 
 typedef struct{
+    float32 motor_rpm;
     signed int steering_angle_delta : 7;
-    signed int motor1_rpm_delta : 16;
-    signed int motor2_rpm_delta : 16;
 } VehicleControlMsg;
 /*********************************************************************************************************************/
 /*--------------------------------------------Private Variables/Constants--------------------------------------------*/

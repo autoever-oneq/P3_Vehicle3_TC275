@@ -56,17 +56,17 @@ void core0_main (void)
 
     volatile int cnt = 0;
     volatile int steering_delta;
-    volatile int motor1_delta;
-    volatile int motor2_delta;
+    volatile float32 motor_rpm;
+
 
     while (1)
     {
 
         if(g_MessageInfo.vehicle_control_flag){
             cnt ++;
+            motor_rpm = g_MessageInfo.vehicle_control.MSG.motor_rpm;
             steering_delta = g_MessageInfo.vehicle_control.MSG.steering_angle_delta;
-            motor1_delta = g_MessageInfo.vehicle_control.MSG.motor1_rpm_delta;
-            motor2_delta = g_MessageInfo.vehicle_control.MSG.motor2_rpm_delta;
+
             g_MessageInfo.vehicle_control_flag = 0;
         }
 

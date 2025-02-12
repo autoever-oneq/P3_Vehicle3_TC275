@@ -47,9 +47,6 @@ void CAN_RxInt0Handler (void)
             {
                 g_MessageInfo.vehicle_control.LL = ((sint64)readmsg.data[1] << 32) | (sint64)readmsg.data[0];
                 g_MessageInfo.vehicle_control_flag = 1;
-//                g_sendInfo.dataLow = readmsg.data[0];
-//                g_sendInfo.dataHigh = readmsg.data[1];
-//                canInterruptFlag = 1;
                 break;
             }
             default:
