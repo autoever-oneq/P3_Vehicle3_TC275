@@ -1,16 +1,18 @@
+//Driver_Stm.c
 /***********************************************************************/
-/*Include*/
+/*Include*/ 
 /***********************************************************************/
 #include "Driver_Stm.h"
 #include "IfxPort.h"
 #include "IfxPort_PinMap.h"
+#include "IfxStm_regdef.h"
 
 /***********************************************************************/
-/*Define*/
+/*Define*/ 
 /***********************************************************************/
 
 /***********************************************************************/
-/*Typedef*/
+/*Typedef*/ 
 /***********************************************************************/
 typedef struct
 {
@@ -21,48 +23,23 @@ typedef struct
 
 
 /***********************************************************************/
-/*Static Function Prototype*/
+/*Static Function Prototype*/ 
 /***********************************************************************/
 
 
 /***********************************************************************/
-/*Variable*/
+/*Variable*/ 
 /***********************************************************************/
 App_Stm g_Stm; /**< \brief Stm global data */
 uint32 u32nuCounter1ms = 0u;
 SchedulingFlag stSchedulingInfo;
 
 /***********************************************************************/
-/*Function*/
+/*Function*/ 
 /***********************************************************************/
 IFX_INTERRUPT(STM_Int0Handler, 0, 100);
-
-void STM_Int0Handler(void)
-{
-    IfxCpu_enableInterrupts();
-
-    IfxStm_clearCompareFlag(g_Stm.stmSfr, g_Stm.stmConfig.comparator);
-    IfxStm_increaseCompare(g_Stm.stmSfr, g_Stm.stmConfig.comparator, 100000u);
-
-    u32nuCounter1ms++;
-
-
-    if((u32nuCounter1ms % 1) == 0u)
-    {
-        stSchedulingInfo.u8nuScheduling1msFlag = 1u;
-    }
-
-    if((u32nuCounter1ms % 10) == 0u)
-    {
-        stSchedulingInfo.u8nuScheduling10msFlag = 1u;
-    }
-
-    if((u32nuCounter1ms % 100) == 0u)
-    {
-        stSchedulingInfo.u8nuScheduling100msFlag = 1u;
-    }
-}
-
+Ifx_STM g_Ifx_STM;
+//uint32 timeStamp = g_Stm.stmSfr->TIM0.U;
 void Driver_Stm_Init(void)
 {
     /* disable interrupts */
@@ -78,10 +55,52 @@ void Driver_Stm_Init(void)
     g_Stm.stmConfig.ticks           = 100000u;
 
     IfxStm_initCompare(g_Stm.stmSfr, &g_Stm.stmConfig);
-
     /* enable interrupts again */
     IfxCpu_restoreInterrupts(interruptState);
+
 }
 
 
+void STM_Int0Handler(void)
+{
+    IfxCpu_enableInterrupts();    
+    
+    IfxStm_clearCompareFlag(g_Stm.stmSfr, g_Stm.stmConfig.comparator);
+    IfxStm_increaseCompare(g_Stm.stmSfr, g_Stm.stmConfig.comparator, 100000u);
+
+    u32nuCounter1ms++;
+
+
+
+    if((u32nuCounter1ms % 1) == 0u)
+    {
+        stSchedulingInfo.u8nuScheduling1msFlag = 1u;
+    }  
+
+    if((u32nuCounter1ms % 10) == 0u)
+    {
+        stSchedulingInfo.u8nuScheduling10msFlag = 1u;
+    }
+
+    if((u32nuCounter1ms % 100) == 0u)
+    {
+        stSchedulingInfo.u8nuScheduling100msFlag = 1u;
+    }    
+    if((u32nuCounter1ms % 1000) == 0u)
+    {
+        stSchedulingInfo.u8nuScheduling1000msFlag = 1u;
+    }
+}
+
+void MyDelay_micro(uint32 deadLine){
+    uint32 start = MODULE_STM0.TIM0.U;
+    uint32 temp = 0;
+    while((((MODULE_STM0.TIM0.U) - start)/ 100) <= deadLine) temp++;
+}
+
+void MyDelay_milli(uint32 deadLine){
+    uint32 start = MODULE_STM0.TIM0.U;
+    uint32 temp = 0;
+    while((((MODULE_STM0.TIM0.U) - start)/ 100000) <= deadLine) temp++;
+}
 
