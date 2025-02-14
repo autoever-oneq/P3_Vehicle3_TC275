@@ -28,11 +28,13 @@
 #ifndef GTM_ATOM_PWM_H_
 #define GTM_ATOM_PWM_H_
 
+#include "Ifx_Types.h"
 /*********************************************************************************************************************/
 /*-----------------------------------------------Function Prototypes-------------------------------------------------*/
 /*********************************************************************************************************************/
 void initGtmATomPwm(void);
-//void fadeLED(void);
 void PWM_set(uint32);
-
+void PWM_setB(uint32);
+void setDutyCycle(uint32 dutyCycle);
+void setDutyCycleB(uint32 dutyCycle);
 #endif /* GTM_ATOM_PWM_H_ */

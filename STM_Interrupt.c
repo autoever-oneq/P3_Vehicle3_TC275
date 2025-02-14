@@ -39,9 +39,6 @@
 
 #include "GTM_ATOM_PWM.h"
 
-
-
-
 /*********************************************************************************************************************/
 /*------------------------------------------------------Macros-------------------------------------------------------*/
 /*********************************************************************************************************************/
@@ -50,6 +47,9 @@
 
 //#define LED                     &MODULE_P13,0                   /* LED toggled in Interrupt Service Routine (ISR)   */
 #define STM                     &MODULE_STM0                    /* STM0 is used in this example                     */
+
+// Interrupt priority definitions
+#define ISR_PRIORITY_INCRENC_ZERO 6
 
 /*********************************************************************************************************************/
 /*-------------------------------------------------Global variables--------------------------------------------------*/
@@ -60,10 +60,6 @@ Ifx_TickTime g_ticksFor1ms;                                   /* Variable to sto
 /*********************************************************************************************************************/
 /*------------------------------------------------Function Prototypes------------------------------------------------*/
 /*********************************************************************************************************************/
-//void initLED(void);
-//void initSTM(void);
-extern void Encoder_update(void);
-extern void Encoder_updateB(void); //추가
 /*********************************************************************************************************************/
 /*---------------------------------------------Function Implementations----------------------------------------------*/
 /*********************************************************************************************************************/
@@ -79,32 +75,39 @@ extern void Encoder_updateB(void); //추가
  *  - priority: Interrupt priority. Refer Usage of Interrupt Macro for more details.
  */
 
-//IFX_INTERRUPT(isrSTM, 0, ISR_PRIORITY_STM);
+IfxGpt12_IncrEnc_Config gpt12Config;
+IfxGpt12_IncrEnc_Config gpt12ConfigB; // motor config B
+IfxGpt12_IncrEnc gpt12;
+IfxGpt12_IncrEnc gpt12B; // gpt 타이머 추가
 
-extern IfxGpt12_IncrEnc_Config gpt12Config;
-extern IfxGpt12_IncrEnc_Config gpt12ConfigB;
-extern uint32 CPR;
+// 엔코더 설정
+const uint32 CPR = (PULSES_PER_REV * 4);  // 4체배시 한바퀴 펄스 수
+
+
 sint32 Enc_count_new = 0;
 sint32 Enc_count_old = 0;
 float32 Enc_count_diff = 0;
 float32 motor_speed_rpm=0;
 
-sint32 Enc_count_newB = 0; // 추가
+sint32 Enc_count_newB = 0; // B추가
 sint32 Enc_count_oldB = 0;
 float32 Enc_count_diffB = 0;
 float32 motor_speed_rpmB=0;
 
 PIDREG3 speed_pid = PIDREG3_DEFAULTS;
-PIDREG3 speed_pidB = PIDREG3_DEFAULTS; // 추가
+PIDREG3 speed_pidB = PIDREG3_DEFAULTS; // B추가
 
-volatile float32 Kp_s=4,Ki_s=0.5,Kd_s=0;
+volatile float32 Kp_s=15,Ki_s=1.5,Kd_s=0, Kp_sB=15,Ki_sB=1.5,Kd_sB=0;
 float32 s_T_samp= 0.001*TIMER_INT_TIME; // 스케줄링 주기에 맞춰주기
 float32 RPM_max = 330, RPM_min = -330;
 
-extern float32 RPM_CMD1;
-extern float32 RPM_CMD2;
+// 필터 변수
+float32 speedBuffer[FILTER_SIZE] = {0};  // 속도 값을 저장할 배열
+uint8 filterIndex = 0;  // 배열 인덱스
+float32 speedBufferB[FILTER_SIZE] = {0};  // 속도 값을 저장할 배열
+uint8 filterIndexB = 0;  // 배열 인덱스
 
-//void pid_reset(PIDREG3 *v);
+volatile float32 ui_cont = 0.5;
 
 float tan_table[25] = {
   -1.73, -1.43, -1.19, -1.00, -0.84, -0.70, -0.58, -0.47, -0.36, -0.27, -0.18, -0.09, // -60° ~ -5°
@@ -112,24 +115,153 @@ float tan_table[25] = {
   0.09, 0.18, 0.27, 0.36, 0.47, 0.58, 0.70, 0.84, 1.00, 1.19, 1.43, 1.73  // 5° ~ 60°
 }; // 조향 알고리즘 성분
 
-volatile float32 testC = 0;
-volatile float32 test_temp = 0;
+volatile float32 temp_val = 0;
+void initIncrEnc(void)
+{
+    // Initialize global clocks
+    IfxGpt12_enableModule(&MODULE_GPT120);
+    IfxGpt12_setGpt1BlockPrescaler(&MODULE_GPT120, IfxGpt12_Gpt1BlockPrescaler_8);
+    IfxGpt12_setGpt2BlockPrescaler(&MODULE_GPT120, IfxGpt12_Gpt2BlockPrescaler_4);
+
+    IfxGpt12_IncrEnc_initConfig(&gpt12Config, &MODULE_GPT120);
+
+    // Configure encoder parameters
+    gpt12Config.base.offset               = 100;                    // Initial position offset
+    gpt12Config.base.reversed             = FALSE;               // Count direction not reversed
+    gpt12Config.base.resolution           = PULSES_PER_REV;                // Encoder resolution
+    gpt12Config.base.periodPerRotation    = 1;                   // Number of periods per rotation
+    gpt12Config.base.resolutionFactor     = IfxStdIf_Pos_ResolutionFactor_fourFold;  // Quadrature mode
+    gpt12Config.base.updatePeriod         = 0.001;              // 1ms update period
+    gpt12Config.base.speedModeThreshold   = 100;                // Threshold for speed calculation mode
+    gpt12Config.base.minSpeed             = 10;                 // Minimum speed in rpm
+    gpt12Config.base.maxSpeed             = 5000;                // Maximum speed in rpm
+
+    // Configure pins
+    gpt12Config.pinA = &IfxGpt120_T2INA_P00_7_IN;     // Encoder A signal -> T3IN4  39
+    gpt12Config.pinB = &IfxGpt120_T2EUDA_P00_8_IN;    // Encoder B signal -> T3EUD  26
+    gpt12Config.pinZ = NULL;                          // No Z signal used
+    gpt12Config.pinMode = IfxPort_InputMode_pullDown;   // Use internal pullup
+
+    // Configure interrupts
+    gpt12Config.zeroIsrPriority = ISR_PRIORITY_INCRENC_ZERO;
+    gpt12Config.zeroIsrProvider = IfxSrc_Tos_cpu0;
+
+    // Enable speed filter
+    gpt12Config.base.speedFilterEnabled = TRUE;
+    gpt12Config.base.speedFilerCutOffFrequency = gpt12Config.base.maxSpeed / 2 * IFX_PI * 2;
+
+    // Initialize module
+    IfxGpt12_IncrEnc_init(&gpt12, &gpt12Config);
+
+}
+
+void initIncrEncB(void) // motor timer2 connect
+{
+    // Initialize global clocks
+    IfxGpt12_enableModule(&MODULE_GPT120);
+    IfxGpt12_setGpt1BlockPrescaler(&MODULE_GPT120, IfxGpt12_Gpt1BlockPrescaler_8); // gpt1(timer 2, 3, 4)
+    IfxGpt12_setGpt2BlockPrescaler(&MODULE_GPT120, IfxGpt12_Gpt2BlockPrescaler_4); // gpt2(timer 5, 6)
+
+    IfxGpt12_IncrEnc_initConfig(&gpt12ConfigB, &MODULE_GPT120);
+
+    // Configure encoder parameters
+    gpt12ConfigB.base.offset               = 100;                    // Initial position offset
+    gpt12ConfigB.base.reversed             = FALSE;               // Count direction not reversed
+    gpt12ConfigB.base.resolution           = PULSES_PER_REV;                // Encoder resolution
+    gpt12ConfigB.base.periodPerRotation    = 1;                   // Number of periods per rotation
+    gpt12ConfigB.base.resolutionFactor     = IfxStdIf_Pos_ResolutionFactor_fourFold;  // Quadrature mode
+    gpt12ConfigB.base.updatePeriod         = 0.001;              // 1ms update period
+    gpt12ConfigB.base.speedModeThreshold   = 100;                // Threshold for speed calculation mode
+    gpt12ConfigB.base.minSpeed             = 10;                 // Minimum speed in rpm
+    gpt12ConfigB.base.maxSpeed             = 5000;                // Maximum speed in rpm
+
+    // Configure pins
+    gpt12ConfigB.pinA = &IfxGpt120_T4INA_P02_8_IN;     // Encoder A 51
+    gpt12ConfigB.pinB = &IfxGpt120_T4EUDA_P00_9_IN;    // Encoder B 28
+    gpt12ConfigB.pinZ = NULL;                          // No Z signal used
+    gpt12ConfigB.pinMode = IfxPort_InputMode_pullDown;   // Use internal pullup
+
+    // Configure interrupts
+    gpt12ConfigB.zeroIsrPriority = ISR_PRIORITY_INCRENC_ZERO;
+    gpt12ConfigB.zeroIsrProvider = IfxSrc_Tos_cpu0;
+
+    // Enable speed filter
+    gpt12ConfigB.base.speedFilterEnabled = TRUE;
+    gpt12ConfigB.base.speedFilerCutOffFrequency = gpt12ConfigB.base.maxSpeed / 2 * IFX_PI * 2;
+
+    // Initialize module
+    IfxGpt12_IncrEnc_init(&gpt12B, &gpt12ConfigB);
+}
+
+// 모터 제어 함수
+void setMotorControl(uint8 direction, uint8 enable)
+{
+    // 브레이크 설정
+    if (enable == 0)
+    {
+        IfxPort_setPinState(BRAKEA_PIN, IfxPort_State_high); // 브레이크 활성화
+        // PWM 출력 중지
+        //GTM_TOM0_TGC0_GLB_CTRL.B.UPEN_CTRL1 = 0;
+        return;
+    }
+    else
+    {
+        IfxPort_setPinState(BRAKEA_PIN, IfxPort_State_low); // 브레이크 비활성화
+        //GTM_TOM0_TGC0_GLB_CTRL.B.UPEN_CTRL1 = 2;
+    }
+
+    // 방향 설정
+    if (direction == 0)
+    {
+        IfxPort_setPinState(DIRA_PIN, IfxPort_State_low); // 정방향
+    }
+    else
+    {
+        IfxPort_setPinState(DIRA_PIN, IfxPort_State_high); // 역방향
+    }
+
+
+}
+
+void setMotorControlB(uint8 direction, uint8 enable)
+{
+    // 브레이크 설정
+    if (enable == 0)
+    {
+        IfxPort_setPinState(BRAKEB_PIN, IfxPort_State_high); // 브레이크 활성화
+        // PWM 출력 중지
+        //GTM_TOM0_TGC0_GLB_CTRL.B.UPEN_CTRL1 = 0;
+        return;
+    }
+    else
+    {
+        IfxPort_setPinState(BRAKEB_PIN, IfxPort_State_low); // 브레이크 비활성화
+        //GTM_TOM0_TGC0_GLB_CTRL.B.UPEN_CTRL1 = 2;
+    }
+
+    // 방향 설정
+    if (direction == 0)
+    {
+        IfxPort_setPinState(DIRB_PIN, IfxPort_State_low); // 정방향
+    }
+    else
+    {
+        IfxPort_setPinState(DIRB_PIN, IfxPort_State_high); // 역방향
+    }
+}
+
 void RPM_cal(void)
 {
-    Encoder_update();   //지워도 되는지 확인할것 나중에 지울 것
-    Encoder_updateB(); // 일단 추가
-
     Enc_count_new = gpt12Config.module->T2.U;
-    Enc_count_diff = (float32)(Enc_count_new - Enc_count_old); // 밑에 코드는 엔코더에서 읽은 값을 강제로 양수로 만듬(모터 회전이 반대로 되야 함)
-    //Enc_count_diff = (Enc_count_new - Enc_count_old > 2000) ? Enc_count_diff : (float32)((Enc_count_new - Enc_count_old) * (-1));
+//    Enc_count_diff = (float32)(Enc_count_new - Enc_count_old); // 밑에 코드는 엔코더에서 읽은 값을 강제로 양수로 만듬(모터 회전이 반대로 되야 함)
+    Enc_count_diff = (Enc_count_new - Enc_count_old > 2000) ? Enc_count_diff : (float32)((Enc_count_new - Enc_count_old) * (-1));
     motor_speed_rpm = Enc_count_diff/(float32)CPR/(float32)(TIMER_INT_TIME*0.001)*60.0f;
     Enc_count_old = Enc_count_new;
 
-    // 추가 내용 여기 값이 계속 초기화됨
-//    testC = gpt12ConfigB.module->T4.U; // 0, 1 만 받아짐
     Enc_count_newB = gpt12ConfigB.module->T4.U; // 자료형 다름
-    //Enc_count_diffB = (float32)(Enc_count_newB - Enc_count_oldB);
-    Enc_count_diffB = (Enc_count_newB - Enc_count_oldB > 2000) ? Enc_count_diffB : (float32)((Enc_count_newB - Enc_count_oldB) * (-1));
+//    Enc_count_diffB = (float32)(Enc_count_newB - Enc_count_oldB);
+//    Enc_count_diffB = (Enc_count_newB - Enc_count_oldB > 2000) ? Enc_count_diffB : (float32)((Enc_count_newB - Enc_count_oldB) * (-1));
+    Enc_count_diffB = (Enc_count_newB - Enc_count_oldB < -2000) ? Enc_count_diffB : (float32)((Enc_count_newB - Enc_count_oldB));
     motor_speed_rpmB = Enc_count_diffB/(float32)CPR/(float32)(TIMER_INT_TIME*0.001)*60.0f;
     Enc_count_oldB = Enc_count_newB;
 }
@@ -140,170 +272,76 @@ void PI_const_update(void) // 튜닝이 끝나면 main문에서 한번만 선언
     speed_pid.Kp = Kp_s;
     speed_pid.Ki = Ki_s;
     speed_pid.Kd = Kd_s;
-    speed_pid.Kc = 1/Kp_s;
+    speed_pid.Kc = Ki_s * ui_cont;
     speed_pid.T_samp = s_T_samp;
 //        speed_pid.Current_mode = 1;
     speed_pid.OutMax = RPM_max;
     speed_pid.OutMin = RPM_min;
 
-    speed_pidB.Kp = Kp_s; // 새로 추가
-    speed_pidB.Ki = Ki_s;
-    speed_pidB.Kd = Kd_s;
-    speed_pidB.Kc = 1/Kp_s;
+    speed_pidB.Kp = Kp_sB; // 새로 추가
+    speed_pidB.Ki = Ki_sB;
+    speed_pidB.Kd = Kd_sB;
+    speed_pidB.Kc = Ki_sB * ui_cont;
     speed_pidB.T_samp = s_T_samp; // 주기 바뀌면 s_T_samp 바뀌어야 함
 //        speed_pid.Current_mode = 1;
     speed_pidB.OutMax = RPM_max;
     speed_pidB.OutMin = RPM_min;
 
 }
-void PI_Speed_con(void) // 이거 지금 안씀
-{
-//    RPM_Err = RPM_CMD - motor_speed_rpm;
-    PI_const_update();
-    // Initialze the PID module for Current
-    if(RPM_CMD1==0)
-    {
-        speed_pid.reset((void *)&speed_pid);
-        setMotorControl(0,0);
-
-    }
-    else
-    {
-        speed_pid.Ref=RPM_CMD1;   // speed reference
-        speed_pid.Fdb= motor_speed_rpm; // speed measured by ENC
-        speed_pid.calc((void *)&speed_pid);   // Calculate speed PID Controller
-    }
-
-
-    if(RPM_CMD2==0)
-    {
-        speed_pidB.reset((void *)&speed_pidB);
-        setMotorControlB(0,0);
-    }
-    else
-    {
-        speed_pidB.Ref=RPM_CMD2;   // speed reference float32
-        speed_pidB.Fdb= motor_speed_rpmB; // speed measured by ENC
-        speed_pidB.calc((void *)&speed_pidB);   // Calculate speed PID Controller
-    }
-
-}
-
 
 void isrSTM(void)
 {
-    /* Update the compare register value that will trigger the next interrupt and toggle the LED */
-//    IfxPort_setPinState(LED, IfxPort_State_toggled);
     RPM_cal();
     speed_pid.Fdb= motor_speed_rpm; // speed measured by ENC
     speed_pid.calc((void *)&speed_pid);   // Calculate speed PID Controller
     speed_pidB.Fdb= motor_speed_rpmB; // speed measured by ENC
     speed_pidB.calc((void *)&speed_pidB);   // Calculate speed PID Controller
 
-//    PI_Speed_con();
-    PI_const_update();
+    PI_const_update(); // 계수값 업데이트
 
     if (speed_pid.Out>=0){ // speed_pid.Out은 float32
-        setMotorControl(0,1);  //void setMotorControl(uint8 direction, uint8 enable)
+        setMotorControl(1,1);  //void setMotorControl(uint8 direction, uint8 enable)
 
         PWM_set((uint32)speed_pid.Out);      /* PWM_set 인자는 uint32  */
 
     }
     else { // 음수인 경우
-        setMotorControl(1,1);  //void setMotorControl(uint8 direction, uint8 enable)
+        setMotorControl(0,1);  //void setMotorControl(uint8 direction, uint8 enable)
         speed_pid.Out = speed_pid.Out*(-1); // 음수 변환
         PWM_set((uint32)speed_pid.Out);      /* Change the intensity of the Motor  */
     }
 
     if (speed_pidB.Out>=0){ // 모터B용 speed_pidB
-        setMotorControlB(1,1);  //void setMotorControl(uint8 direction, uint8 enable)
+        setMotorControlB(0,1);  //void setMotorControl(uint8 direction, uint8 enable)
         // 값 잘 들어옴
         PWM_setB((uint32)speed_pidB.Out);      /* Change the intensity of the MotorB  */
 
     }
     else { // 음수인 경우
-        setMotorControlB(0,1);  //void setMotorControl(uint8 direction, uint8 enable)
+        setMotorControlB(1,1);  //void setMotorControl(uint8 direction, uint8 enable)
         speed_pidB.Out = speed_pidB.Out*(-1); // 음수 변환
         PWM_setB((uint32)speed_pidB.Out);      /* 이거 음수넣으면 안됨  */
     }
-
-    //IfxStm_increaseCompare(STM, g_STMConf.comparator, g_ticksFor1ms);
 }
-
-//
-void update_motor_rpm(Message_Info* msgptr){
-    msgptr->vehicle_status.MSG.motor_cur_rpm = (motor_speed_rpm + motor_speed_rpmB)/2.0f;
-}
-
-/* Function to initialize the STM */
-void initSTM(void)
-{
-    IfxStm_initCompareConfig(&g_STMConf);           /* Initialize the configuration structure with default values   */
-
-    g_STMConf.triggerPriority = ISR_PRIORITY_STM;   /* Set the priority of the interrupt                            */
-    g_STMConf.typeOfService = IfxSrc_Tos_cpu0;      /* Set the service provider for the interrupts                  */
-    g_STMConf.ticks = g_ticksFor1ms;              /* Set the number of ticks after which the timer triggers an
-                                                     * interrupt for the first time                                 */
-    IfxStm_initCompare(STM, &g_STMConf);            /* Initialize the STM with the user configuration               */
-}
-
-
-/* Function to initialize all the peripherals and variables used */
-void initPeripherals(void)
-{
-    /* Initialize time constant */
-    g_ticksFor1ms = IfxStm_getTicksFromMilliseconds(BSP_DEFAULT_TIMER, TIMER_INT_TIME);
-
-    initSTM();                                      /* Configure the STM module                               */
-
-}
-
-// 여기부터 추가
-// 각도 계산기 지금 사용 X
-//void calculateWheelSpeeds(float32 steeringAngle, float32 *leftRPM, float32 *rightRPM)
-//{
-//    float32 W = 220.0;  // 차량 바퀴 간 거리 (mm)
-//    float32 T = 0.1;  // 조향을 적용할 시간 (초)
-//    float32 D = 65.0;  // 바퀴 지름 (mm)
-//    float32 C = IFX_PI * D;  // 바퀴 둘레 (mm)
-//
-//    // 조향각도 제한 (-100° ~ 100°)
-//    if (steeringAngle > 100.0) steeringAngle = 100.0;
-//    if (steeringAngle < -100.0) steeringAngle = -100.0;
-//
-//    // 각속도 계산 (rad/s)
-//    float32 omega = (steeringAngle * IFX_PI) / (180.0 * T);
-//
-//    // 바퀴 속도 차이 (mm/s)
-//    float32 deltaV = (W * omega);
-//
-//    // mm/s → RPM 변환
-//    float32 deltaRPM = (deltaV / C) * 60;
-//
-//    // 좌/우 바퀴 RPM 계산
-//    if(deltaRPM > 0) *leftRPM += deltaRPM; // 속도 차 주기(우회전)
-//    else *rightRPM += deltaRPM; // 속도 차 주기(좌회전)
-//
-//    // 속도 제한
-//    if (*leftRPM > 330) *leftRPM = 330;
-//    if (*rightRPM > 330) *rightRPM = 330;
-//    if (*leftRPM < 0) *leftRPM = 0;
-//    if (*rightRPM < 0) *rightRPM = 0;
-//}
-
 
 // 직진 함수
 void goStraight(float32 speed)
 {
-    speed_pid.reset((void *)&speed_pid);
+//    speed_pid.reset((void *)&speed_pid);
     speed_pid.Ref=speed;   // speed reference
-//    speed_pid.Fdb= motor_speed_rpm; // speed measured by ENC
-//    speed_pid.calc((void *)&speed_pid);   // Calculate speed PID Controller
 
-    speed_pidB.reset((void *)&speed_pidB);
+//    speed_pidB.reset((void *)&speed_pidB);
     speed_pidB.Ref=speed;   // speed reference float32
-//    speed_pidB.Fdb= motor_speed_rpmB; // speed measured by ENC
-//    speed_pidB.calc((void *)&speed_pidB);   // Calculate speed PID Controller
+}
+
+// 직진 함수
+void goBackward(float32 speed)
+{
+//    speed_pid.reset((void *)&speed_pid);
+    speed_pid.Ref=-speed;   // speed reference
+
+//    speed_pidB.reset((void *)&speed_pidB);
+    speed_pidB.Ref=-speed;   // speed reference float32
 }
 
 // 정지 함수 (모터를 정지시킴)
@@ -311,14 +349,12 @@ void stopMotors(void)
 {
     speed_pid.reset((void *)&speed_pid);
     speed_pid.Ref = 0;
-    speed_pid.ErrSum = 0; // 이거 추가해보기 완전 초기화??
-//    motor_speed_rpm = 0; // 일단 주석
+    speed_pid.ErrSum = 0; // 이거 추가해보기 완전 초기화
     setMotorControl(0,0);
 
     speed_pidB.reset((void *)&speed_pidB);
     speed_pidB.Ref = 0;
-    speed_pidB.ErrSum = 0; // 이거 추가해보기 완전 초기화??
-//    motor_speed_rpmB = 0; // 일단 주석
+    speed_pidB.ErrSum = 0; // 이거 추가해보기 완전 초기화
     setMotorControlB(0,0);
 }
 
@@ -330,38 +366,130 @@ void calculate_motor_speeds(float32 steering_angle, float32 *left_rpm, float32 *
     if (index < 0) index = 0;
     if (index > 24) index = 24;
 
-    AvgRPM = ( *left_rpm + *right_rpm ) / 2;
+    AvgRPM = ( speed_pid.Ref + speed_pidB.Ref ) / 2;
 
     // 2. 탄젠트 값 참조
     tan_value = tan_table[index];
 
     // 3. 모터 속도 차이 계산
     delta_r = AvgRPM * tan_value;
-    test_temp = steering_angle;
-    testC = delta_r;
-    // 4. 좌우 모터 속도 계산
+    temp_val = delta_r;
+    // 4. 좌우 모터 속도 계산(반반)
     *left_rpm = AvgRPM + (delta_r / 2);
     *right_rpm = AvgRPM - (delta_r / 2);
+
+    if(*left_rpm < 0) *left_rpm = 0;
+    if(*right_rpm < 0) *right_rpm = 0;
+
+    // 여기는 한쪽 몰빵
+//    if(steering_angle < 0)
+//    {
+//        *left_rpm = AvgRPM + delta_r;
+//        *right_rpm = AvgRPM;
+//    }
+//    else
+//    {
+//        *left_rpm = AvgRPM;
+//        *right_rpm = AvgRPM + delta_r;
+//    }
 }
+
+//void calculate_motor_speeds(float32 steering_angle, float32 *left_rpm, float32 *right_rpm) {
+//    uint32 index;
+//    float32 AvgRPM, tan_value, delta_r;
+//    // 1. 조향 각도를 LUT 인덱스로 변환 (-60° ~ 60° -> 0 ~ 24)
+//    index = ((steering_angle + 60) / 5);
+//    if (index < 0) index = 0;
+//    if (index > 24) index = 24;
+//
+//    AvgRPM = ( *left_rpm + *right_rpm );
+//
+//    // 2. 탄젠트 값 참조
+//    tan_value = tan_table[index];
+//
+//    // 3. 모터 속도 차이 계산
+//    delta_r = AvgRPM * tan_value / 2;
+//    temp_val = delta_r;
+//    // 4. 좌우 모터 속도 계산(반반)
+//    *left_rpm = AvgRPM + (delta_r / 2);
+//    *right_rpm = AvgRPM - (delta_r / 2);
+//
+//    if(*left_rpm < 0) *left_rpm = 0;
+//    if(*right_rpm < 0) *right_rpm = 0;
+//
+//    // 여기는 한쪽 몰빵
+////    if(steering_angle < 0)
+////    {
+////        *left_rpm = AvgRPM + delta_r;
+////        *right_rpm = AvgRPM;
+////    }
+////    else
+////    {
+////        *left_rpm = AvgRPM;
+////        *right_rpm = AvgRPM + delta_r;
+////    }
+//}
 
 // 스티어링
 void setSteeringControl(float32 steeringAngle)
 {
     float32 leftSpeed, rightSpeed;
-    leftSpeed = motor_speed_rpm;
-    rightSpeed = motor_speed_rpmB; // 현재속도 업데이트
+    leftSpeed = speed_pid.Ref;
+    rightSpeed = speed_pidB.Ref; // 현재속도 업데이트
 
     // 좌/우 바퀴 속도 차이 계산 (양수각도 == 우회전)
     calculate_motor_speeds(steeringAngle, &leftSpeed, &rightSpeed);
 
     speed_pid.Ref=leftSpeed;   // speed reference
-//    speed_pid.Fdb= motor_speed_rpm; // speed measured by ENC 여기 의심스러움
-//    speed_pid.calc((void *)&speed_pid);   // Calculate speed PID Controller
-
     speed_pidB.Ref=rightSpeed;   // speed reference float32
-//    speed_pidB.Fdb= motor_speed_rpmB; // speed measured by ENC
-//    speed_pidB.calc((void *)&speed_pidB);   // Calculate speed PID Controller
 
-    setMotorControl(0, 1);   // 왼쪽 모터 정방향 (-)
-    setMotorControlB(1, 1);  // 오른쪽 모터 정방향
+    setMotorControl(1, 1);   // 왼쪽 모터 정방향 (-)
+    setMotorControlB(0, 1);  // 오른쪽 모터 정방향
 }
+
+void update_motor_rpm(Message_Info* msgptr){
+    msgptr->vehicle_status.MSG.motor_cur_rpm = (motor_speed_rpm + motor_speed_rpmB)/2.0f;
+}
+
+//void setSteeringControl(float32 steeringAngle)
+//{
+//    float32 leftSpeed, rightSpeed;
+//    leftSpeed = motor_speed_rpm;
+//    rightSpeed = motor_speed_rpmB; // 현재속도 업데이트
+//
+//    // 좌/우 바퀴 속도 차이 계산 (양수각도 == 우회전)
+//    calculate_motor_speeds(steeringAngle, &leftSpeed, &rightSpeed);
+//
+//    speed_pid.Ref=leftSpeed;   // speed reference
+//    speed_pidB.Ref=rightSpeed;   // speed reference float32
+//
+//    setMotorControl(1, 1);   // 왼쪽 모터 정방향 (-)
+//    setMotorControlB(0, 1);  // 오른쪽 모터 정방향
+//}
+
+// 속도 평균 필터 바퀴가 매우 흔들림
+//float32 updateSpeedFilter(float32 newSpeed)
+//{
+//    speedBuffer[filterIndex] = newSpeed;  // 새 속도 값 저장
+//    filterIndex = (filterIndex + 1) % FILTER_SIZE;  // 인덱스 순환
+//
+//    float32 sum = 0;
+//    for (int i = 0; i < FILTER_SIZE; i++)
+//    {
+//        sum += speedBuffer[i];
+//    }
+//    return sum / FILTER_SIZE;  // 평균 속도
+//}
+//
+//float32 updateSpeedFilterB(float32 newSpeed)
+//{
+//    speedBufferB[filterIndexB] = newSpeed;  // 새 속도 값 저장
+//    filterIndexB = (filterIndexB + 1) % FILTER_SIZE;  // 인덱스 순환
+//
+//    float32 sum = 0;
+//    for (int i = 0; i < FILTER_SIZE; i++)
+//    {
+//        sum += speedBufferB[i];
+//    }
+//    return sum / FILTER_SIZE;  // 평균 속도
+//}

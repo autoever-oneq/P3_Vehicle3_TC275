@@ -36,8 +36,8 @@
 /*------------------------------------------------------Macros-------------------------------------------------------*/
 /*********************************************************************************************************************/
 #define ISR_PRIORITY_ATOM  20                                   /* Interrupt priority number                        */
-#define LED                IfxGtm_ATOM1_1_TOUT1_P02_1_OUT      /* LED which will be driven by the PWM              */
-#define LED2               IfxGtm_ATOM1_3_TOUT105_P10_3_OUT // 이거 추가
+#define MotorA                IfxGtm_ATOM1_1_TOUT1_P02_1_OUT      /* LED which will be driven by the PWM              */
+#define MotorB               IfxGtm_ATOM1_3_TOUT105_P10_3_OUT // 이거 추가
 #define PWM_PERIOD         330                                 /* PWM period for the ATOM                          */
 #define CLK_FREQ           1000000.0f                           /* CMU clock frequency, in Hertz                    */
 
@@ -53,15 +53,11 @@ uint32 g_PWMValue = 0;                                         /* Initialization
 /*********************************************************************************************************************/
 /*-----------------------------------------------Function Prototypes-------------------------------------------------*/
 /*********************************************************************************************************************/
-void setDutyCycle(uint32 dutyCycle);
-void setDutyCycleB(uint32 dutyCycle); // 이거 추가
+
 /*********************************************************************************************************************/
 /*--------------------------------------------Function Implementations-----------------------------------------------*/
 /*********************************************************************************************************************/
 /* This function initializes the ATOM */
-
-uint32 TestA = 0; // 테스트용
-uint32 TestB = 0;
 
 void initGtmATomPwm(void)
 {
@@ -72,10 +68,10 @@ void initGtmATomPwm(void)
 
     IfxGtm_Atom_Pwm_initConfig(&g_atomConfig, &MODULE_GTM);                     /* Initialize default parameters    */
 
-    g_atomConfig.atom = LED.atom;                                       /* Select the ATOM depending on the LED     */
-    g_atomConfig.atomChannel = LED.channel;                             /* Select the channel depending on the LED  */
+    g_atomConfig.atom = MotorA.atom;                                       /* Select the ATOM depending on the LED     */
+    g_atomConfig.atomChannel = MotorA.channel;                             /* Select the channel depending on the LED  */
     g_atomConfig.period = PWM_PERIOD;                                   /* Set timer period                         */
-    g_atomConfig.pin.outputPin = &LED;                                  /* Set LED as output                        */
+    g_atomConfig.pin.outputPin = &MotorA;                                  /* Set LED as output                        */
     g_atomConfig.synchronousUpdateEnabled = TRUE;                       /* Enable synchronous update                */
 
     IfxGtm_Atom_Pwm_init(&g_atomDriver, &g_atomConfig);                 /* Initialize the PWM                       */
@@ -84,10 +80,10 @@ void initGtmATomPwm(void)
     // 이거 추가
     IfxGtm_Atom_Pwm_initConfig(&g_atomConfigB, &MODULE_GTM);                     /* Initialize default parameters    */
 
-    g_atomConfigB.atom = LED2.atom;                                       /* Select the ATOM depending on the LED     */
-    g_atomConfigB.atomChannel = LED2.channel;                             /* Select the channel depending on the LED  */
+    g_atomConfigB.atom = MotorB.atom;                                       /* Select the ATOM depending on the LED     */
+    g_atomConfigB.atomChannel = MotorB.channel;                             /* Select the channel depending on the LED  */
     g_atomConfigB.period = PWM_PERIOD;                                   /* Set timer period                         */
-    g_atomConfigB.pin.outputPin = &LED2;                                  /* Set LED as output                        */
+    g_atomConfigB.pin.outputPin = &MotorB;                                  /* Set LED as output                        */
     g_atomConfigB.synchronousUpdateEnabled = TRUE;                       /* Enable synchronous update                */
 
     IfxGtm_Atom_Pwm_init(&g_atomDriverB, &g_atomConfigB);                 /* Initialize the PWM                       */
@@ -97,7 +93,6 @@ void initGtmATomPwm(void)
 /* This function is creating the fade effect for the LED */
 void PWM_set(uint32 g_PWMValue) // -인지 못함
 {
-    TestA = g_PWMValue; // ??
     if(g_PWMValue >= PWM_PERIOD)
     {
         g_PWMValue = PWM_PERIOD; /* Set the direction of the fade */

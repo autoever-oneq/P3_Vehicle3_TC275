@@ -26,17 +26,45 @@
  *********************************************************************************************************************/
 
 #ifndef STM_INTERRUPT_H_
-#define STM_INTERRUPT_H_ 1
-
+#define STM_INTERRUPT_H_
+#include "Ifx_Types.h"
+#include "PID_CON.h"
 #include "Can.h"
-
 /*********************************************************************************************************************/
 /*------------------------------------------------Function Prototypes------------------------------------------------*/
 /*********************************************************************************************************************/
-void initPeripherals(void);
-void initSTM(void);
+// 핀 정의
+#define PWMA_PIN &MODULE_P02,1   // PWM 핀 (P2.1)
+#define BRAKEA_PIN &MODULE_P02,7 // 브레이크 핀 (P2.7)
+#define DIRA_PIN &MODULE_P10,1   // 방향 제어 핀 (P10.1)
+
+// 핀 정의 B 추가
+#define PWMB_PIN &MODULE_P10,3   // PWMB 핀 (P10.3)
+#define BRAKEB_PIN &MODULE_P02,6 // 브레이크B 핀 (P2.6)
+#define DIRB_PIN &MODULE_P10,2   // 방향 제어B 핀 (P10.2)
+
+#define PULSES_PER_REV 330     // 한 채널당 펄스 수 330으로 변경
+
+// 필터 계수
+#define FILTER_SIZE 5  // 최근 5개 데이터를 사용
+
+void initIncrEnc(void);
+void initIncrEncB(void);
+void setMotorControl(uint8 direction, uint8 enable);
+void setMotorControlB(uint8 direction, uint8 enable);
+
+void RPM_cal(void);
+void PI_const_update(void);
 void isrSTM(void);
+
+void goStraight(float32 speed);
+void goBackward(float32 speed);
+void stopMotors(void);
+void calculate_motor_speeds(float32 steering_angle, float32 *left_rpm, float32 *right_rpm);
+void setSteeringControl(float32 steeringAngle);
+
 void update_motor_rpm(Message_Info* msgptr);
 
-
+float32 updateSpeedFilter(float32 newSpeed);
+float32 updateSpeedFilterB(float32 newSpeed);
 #endif /* STM_INTERRUPT_H_ */

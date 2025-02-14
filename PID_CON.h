@@ -12,8 +12,13 @@ function prototypes for the PIDREG3.
 -------------------------------------------------------------------------------------
  04-15-2005 Version 3.20
 ------------------------------------------------------------------------------*/
+#ifndef PID_CON_H_
+#define PID_CON_H_
+
 #include "Ifx_Types.h"
 
+#define ERR_SUM_MAX 330
+#define ERR_SUM_MIN -330
 
 //#include "PARAMETERS_PMSM_Control.h"
 
@@ -75,11 +80,13 @@ Default initalizer for the PIDREG3 object.
                            0, \
                            0, \
                            0, \
-                          (void (*)(unsigned int))pid_reg3_calc, \
-                          (void (*)(unsigned int))pid_reset }
+                           (void (*)(PIDREG3_handle))pid_reg3_calc, \
+                           (void (*)(PIDREG3_handle))pid_reset }
 
 /*------------------------------------------------------------------------------
 Prototypes for the functions in PIDREG3.C
 ------------------------------------------------------------------------------*/
 void pid_reg3_calc(PIDREG3_handle);
 void pid_reset(PIDREG3_handle);
+
+#endif

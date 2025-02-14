@@ -14,13 +14,53 @@
 
 #include "PID_CON.h"
 
-#define ERR_SUM_MAX 330
-#define ERR_SUM_MIN -330
+//void pid_reg3_calc(PIDREG3 *v)
+//{
+//    v->Err = v->Ref - v->Fdb; // 레퍼런스 - 피드백
+//
+//    // 비례항 계산
+//    v->Up = v->Kp * v->Err;
+//
+//    // 적분항 계산
+//    v->ErrSum += v->Err * v->T_samp;
+//    if (v->ErrSum > ERR_SUM_MAX) {
+//        v->ErrSum = ERR_SUM_MAX;
+//    } else if (v->ErrSum < ERR_SUM_MIN) {
+//        v->ErrSum = ERR_SUM_MIN;
+//    }
+//    v->Ui = v->Ki * v->ErrSum;
+//
+//    // 적분항 추가 제한
+////    if (v->Ui > 500.0f) v->Ui = 500.0f;
+////    else if (v->Ui < -500.0f) v->Ui = -500.0f;
+//
+//    // 미분항 계산
+//    v->Ud = v->Kd / v->T_samp * (v->Err - v->Err_1);
+//
+//    // PID 출력 (Pre-Saturation)
+//    v->OutPreSat = v->Up + v->Ui + v->Ud;
+//
+//    // 출력 포화 제한
+//    if (v->OutPreSat > v->OutMax)
+//        v->Out = v->OutMax;
+//    else if (v->OutPreSat < v->OutMin)
+//        v->Out = v->OutMin;
+//    else
+//        v->Out = v->OutPreSat;
+//
+//    // Anti-windup 보정 (출력 제한 후 적용)
+//    v->SatErr = v->Out - v->OutPreSat;
+//    v->Ui -= v->Kc * v->SatErr;  // 적분항 보정
+//
+//    // 에러 최신화
+//    v->Err_1 = v->Err;
+//}
+
 
 void pid_reg3_calc(PIDREG3 *v)
 {
 
-    v->Err = v->Ref - v->Fdb; // 레퍼런스 - 피드백
+    v->Err = v->Ref - v->Fdb;
 
     // Discrete PID Controller
     v->Up = v->Kp * v->Err ;
@@ -41,10 +81,10 @@ void pid_reg3_calc(PIDREG3 *v)
     v->Out = v->Up + v->Ui + v->Ud;
 
 
-     if (v->Out > v->OutMax) // 330
+     if (v->Out > v->OutMax)
       v->Out =  v->OutMax;
 
-    else if (v->Out < v->OutMin) // -330
+    else if (v->Out < v->OutMin)
       v->Out =  v->OutMin;
 
     v->Err_1 = v->Err;
